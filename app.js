@@ -38,6 +38,9 @@ function showFinished(){
 }
 function currentCases(){return state.pages[state.index].map(id=>data.cases.find(c=>c.id===id))}
 function answered(c){return c.systems.filter(s=>s.available!==false).every(s=>metrics.every(k=>Number.isInteger(state.answers[c.id]?.[s.id]?.[k])))}
+function firstIncompletePage(){
+ return state.pages.findIndex(page=>page.some(id=>!answered(data.cases.find(c=>c.id===id))));
+}
 function begin(){
  const slot=Number($('slot').value);if(!Number.isInteger(slot)||slot<1||slot>20)throw Error('Please enter your invitation number (01–20).');
  if(!$('consent').checked)throw Error('Please confirm consent.');
@@ -71,11 +74,9 @@ function begin(){
   state.pages=shuffle(pages,seed(data.version+':pairs:'+slot));state.order=state.pages.flat();state.index=Math.max(0,state.pages.findIndex(p=>p.includes(previousId)));state.pairedLayout=true;
  }
  $('intro').hidden=true;state.index=Math.min(state.index,state.pages.length-1);
- if(data.preview&&!state.receipt){
-  const firstIncomplete=state.pages.findIndex(page=>page.some(id=>!answered(data.cases.find(c=>c.id===id))));
-  if(firstIncomplete>=0&&(state.finishedAt||state.index>firstIncomplete)){
-   delete state.finishedAt;state.index=firstIncomplete;
-  }
+ if(data.preview&&state.finishedAt&&!state.receipt){
+  const incomplete=firstIncompletePage();
+  if(incomplete>=0){delete state.finishedAt;state.index=incomplete}
  }
  if(state.finishedAt){showFinished();save()}else render();
 }
@@ -115,7 +116,7 @@ function render(){
  const cases=currentCases();
  if(!data.hideDatasetNames)cases.sort((a,b)=>(a.dataset==='AudioCapsEdit'?0:1)-(b.dataset==='AudioCapsEdit'?0:1));
  for(const c of cases)$('caseColumns').append(renderCase(c));
- $('back').disabled=state.index===0;$('next').textContent=state.index===state.pages.length-1?(data.preview?'Finish & download results →':'Finish & review submission →'):'Save both & next →';save();
+ $('back').disabled=state.index===0;$('next').textContent=state.index===state.pages.length-1?(data.preview?'Finish & download results →':'Finish & review submission →'):(data.preview?'Next page →':'Save both & next →');save();
 }
 $('start').onclick=()=>{try{begin()}catch(e){$('status').textContent=e.message}};
 $('resetElapsed').onclick=()=>{
@@ -128,9 +129,22 @@ $('back').onclick=()=>{state.index--;render()};
 $('reviewBack').onclick=()=>{if(!state.receipt){delete state.finishedAt;state.index=0;render();window.scrollTo(0,0)}};
 $('next').onclick=()=>{
  const cases=currentCases();
- if(cases.some(c=>!answered(c))){$('status').textContent='Please complete all ratings for the available versions in both columns.';return}
+ if(!data.preview&&cases.some(c=>!answered(c))){$('status').textContent='Please complete all ratings for the available versions in both columns.';return}
  if(!data.preview && cases.some(c=>!['input',...c.systems.filter(s=>s.available!==false).map(s=>s.id)].every(id=>(state.listening[c.id]?.[id]?.ended||0)>0))){$('status').textContent='Please listen through the original and every available version in both columns.';return}
- if(state.index===state.pages.length-1){document.querySelectorAll('audio').forEach(a=>a.pause());state.finishedAt=new Date().toISOString();showFinished();save()}
+ if(state.index===state.pages.length-1){
+  const incomplete=data.preview?firstIncompletePage():-1;
+  if(incomplete>=0){
+   state.index=incomplete;
+   render();
+   $('status').textContent='Please fill in the remaining ratings before downloading your results.';
+   window.scrollTo(0,0);
+   return;
+  }
+  document.querySelectorAll('audio').forEach(a=>a.pause());
+  state.finishedAt=new Date().toISOString();
+  showFinished();
+  save();
+ }
  else{state.index++;render();window.scrollTo({top:0,behavior:'smooth'})}
 };
 function payload(){return {...state,preview:!!data.preview,elapsedSeconds:Math.round((Date.parse(state.finishedAt)-Date.parse(state.startedAt))/1000),ratings:state.order.map(id=>{const c=data.cases.find(x=>x.id===id);return {caseId:id,dataset:c.dataset,task:c.task,systemOrder:state.systems[id],scores:state.answers[id],listening:state.listening[id]}})}}
