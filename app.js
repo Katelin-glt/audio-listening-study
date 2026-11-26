@@ -88,14 +88,14 @@ function renderCase(c){
  const task=document.createElement('p');task.className='eyebrow';task.textContent={add:'ADD A SOUND',remove:'REMOVE A SOUND',replace:'REPLACE A SOUND'}[c.task];
  const instruction=document.createElement('h3');instruction.textContent=c.instruction;
  const label=document.createElement('small');label.textContent='Original recording';
- const original=document.createElement('audio');original.controls=true;original.preload='none';original.src=c.input;audioEvents(original,c,'input');source.append(task,instruction,label,original);
+ const original=document.createElement('audio');original.controls=true;original.preload='auto';original.src=c.input;audioEvents(original,c,'input');source.append(task,instruction,label,original);
  if(c.selectionPending){const pending=document.createElement('p');pending.className='pending-note';pending.textContent='Provisional sample · selection pending';source.append(pending)}
  column.append(source);state.answers[c.id]??={};
  state.systems[c.id].forEach((id,i)=>{
   const sys=c.systems.find(x=>x.id===id),card=document.createElement('section');card.className='panel system-card';
   const title=document.createElement('h3');title.textContent='Version '+String.fromCharCode(65+i);card.append(title);
   if(sys.available===false){card.className+=' placeholder';const pending=document.createElement('p');pending.className='muted';pending.textContent='Output pending · not available for rating';card.append(pending);column.append(card);return}
-  const audio=document.createElement('audio');audio.controls=true;audio.preload='none';audio.src=sys.audio;audioEvents(audio,c,id);card.append(audio);
+  const audio=document.createElement('audio');audio.controls=true;audio.preload='auto';audio.src=sys.audio;audioEvents(audio,c,id);card.append(audio);
   for(const metric of metrics){
    const field=document.createElement('fieldset'),legend=document.createElement('legend');legend.textContent=metricNames[metric];field.append(legend);
    for(let n=1;n<=5;n++){
