@@ -66,7 +66,7 @@ function begin(savedSlot){
  if(!Array.isArray(state.order)||!state.order.every(id=>data.cases.some(c=>c.id===id)))throw Error('Saved draft does not match study; contact the organizer.');
  // Preserve existing scores while moving single-case sessions into paired pages.
  if(!state.pairedLayout){
-  const previousId=state.order[state.index];const pages=[];
+  const previousId=old?state.order[state.index]:undefined;const pages=[];
   if(data.hideDatasetNames){
    for(let i=0;i<state.order.length;i+=2)pages.push(state.order.slice(i,i+2));
   }else for(const task of ['add','remove','replace']){
