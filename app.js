@@ -19,8 +19,8 @@ function createSessionId(){
 function draftKey(slot){return 'listen:'+data.version+':'+slot}
 function activeSlotKey(){return 'listen-active:'+data.version}
 function save(){
- localStorage.setItem(draftKey(state.slot),JSON.stringify(state));
- sessionStorage.setItem(activeSlotKey(),String(state.slot));
+ localStorage.setItem(draftKey(data.preview?'anonymous':state.slot),JSON.stringify(state));
+ if(!data.preview)sessionStorage.setItem(activeSlotKey(),String(state.slot));
 }
 function showFinished(){
  $('trial').hidden=true;$('done').hidden=false;
@@ -41,11 +41,14 @@ function answered(c){return c.systems.filter(s=>s.available!==false).every(s=>me
 function firstIncompletePage(){
  return state.pages.findIndex(page=>page.some(id=>!answered(data.cases.find(c=>c.id===id))));
 }
-function begin(){
- const slot=Number($('slot').value);if(!Number.isInteger(slot)||slot<1||slot>20)throw Error('Please enter your invitation number (01–20).');
+function begin(savedSlot){
+ const slot=data.preview?null:Number($('slot').value);
+ if(!data.preview&&(!Number.isInteger(slot)||slot<1||slot>20))throw Error('Please enter your invitation number (01–20).');
  if(!$('consent').checked)throw Error('Please confirm consent.');
- const old=localStorage.getItem(draftKey(slot));
+ const old=localStorage.getItem(draftKey(savedSlot??(data.preview?'anonymous':slot)));
  state=old?JSON.parse(old):null;
+ const sessionId=state?.sessionId??createSessionId();
+ const orderSeed=data.version+':'+(state?.slot??slot??sessionId);
  if(!state){
  const selected=[];
  if(data.hideDatasetNames){
@@ -58,8 +61,8 @@ function begin(){
    selected.push(...group.sort((a,b)=>a.rank-b.rank).map(c=>c.id));
   }
  }
- state={version:data.version,sessionId:createSessionId(),slot,startedAt:new Date().toISOString(),index:0,order:shuffle(selected,seed(data.version+':'+slot)),systems:{},answers:{},listening:{},consent:true};
- for(const id of state.order){const c=data.cases.find(x=>x.id===id);state.systems[id]=shuffle(c.systems.map(x=>x.id),seed(data.version+':'+slot+':'+id))}save();}
+ state={version:data.version,sessionId,slot,startedAt:new Date().toISOString(),index:0,order:shuffle(selected,seed(orderSeed)),systems:{},answers:{},listening:{},consent:true};
+ for(const id of state.order){const c=data.cases.find(x=>x.id===id);state.systems[id]=shuffle(c.systems.map(x=>x.id),seed(orderSeed+':'+id))}save();}
  if(!Array.isArray(state.order)||!state.order.every(id=>data.cases.some(c=>c.id===id)))throw Error('Saved draft does not match study; contact the organizer.');
  // Preserve existing scores while moving single-case sessions into paired pages.
  if(!state.pairedLayout){
@@ -71,7 +74,7 @@ function begin(){
    const right=data.cases.filter(c=>c.dataset==='AudioSetCapsEdit'&&c.task===task).sort((a,b)=>a.rank-b.rank);
    for(let i=0;i<Math.max(left.length,right.length);i++)pages.push([left[i]?.id,right[i]?.id].filter(Boolean));
   }
-  state.pages=shuffle(pages,seed(data.version+':pairs:'+slot));state.order=state.pages.flat();state.index=Math.max(0,state.pages.findIndex(p=>p.includes(previousId)));state.pairedLayout=true;
+  state.pages=shuffle(pages,seed(data.version+':pairs:'+(state.slot??sessionId)));state.order=state.pages.flat();state.index=Math.max(0,state.pages.findIndex(p=>p.includes(previousId)));state.pairedLayout=true;
  }
  $('intro').hidden=true;state.index=Math.min(state.index,state.pages.length-1);
  if(data.preview&&state.finishedAt&&!state.receipt){
@@ -101,22 +104,33 @@ function renderCase(c){
    const field=document.createElement('fieldset'),legend=document.createElement('legend');legend.textContent=metricNames[metric];field.append(legend);
    for(let n=1;n<=5;n++){
     const label=document.createElement('label'),radio=document.createElement('input');radio.type='radio';radio.name=c.id+'-'+id+'-'+metric;radio.value=n;radio.checked=state.answers[c.id]?.[id]?.[metric]===n;
-    radio.onchange=()=>{state.answers[c.id][id]??={};state.answers[c.id][id][metric]=n;save()};label.append(radio,document.createTextNode(String(n)));field.append(label)
+    radio.onchange=()=>{state.answers[c.id][id]??={};state.answers[c.id][id][metric]=n;save();updateProgress()};label.append(radio,document.createTextNode(String(n)));field.append(label)
    }card.append(field)
   }column.append(card)
  });return column
 }
-function render(){
- document.querySelectorAll('audio').forEach(a=>a.pause());$('done').hidden=true;$('trial').hidden=false;$('status').textContent='';
+function updateProgress(){
  const completed=state.order.filter(id=>answered(data.cases.find(c=>c.id===id))).length;
  $('progress').textContent=`Page ${state.index+1} of ${state.pages.length} · ${completed} / ${state.order.length} cases completed`;
+ $('bar').max=state.order.length;
+ $('bar').value=completed;
+ const lastPage=state.index===state.pages.length-1;
+ if(data.preview){
+  $('next').textContent=!lastPage?'Next page →':completed===state.order.length?'Finish & download results →':'Review missing ratings →';
+ }else{
+  $('next').textContent=lastPage?'Finish & review submission →':'Save both & next →';
+ }
+}
+function render(){
+ document.querySelectorAll('audio').forEach(a=>a.pause());$('done').hidden=true;$('trial').hidden=false;$('status').textContent='';
+ updateProgress();
  $('resetElapsed').hidden=!data.preview;
  $('elapsed').textContent=`${Math.floor((Date.now()-Date.parse(state.startedAt))/60000)} min elapsed`;
- $('bar').max=state.order.length;$('bar').value=completed;$('caseColumns').replaceChildren();
+ $('caseColumns').replaceChildren();
  const cases=currentCases();
  if(!data.hideDatasetNames)cases.sort((a,b)=>(a.dataset==='AudioCapsEdit'?0:1)-(b.dataset==='AudioCapsEdit'?0:1));
  for(const c of cases)$('caseColumns').append(renderCase(c));
- $('back').disabled=state.index===0;$('next').textContent=state.index===state.pages.length-1?(data.preview?'Finish & download results →':'Finish & review submission →'):(data.preview?'Next page →':'Save both & next →');save();
+ $('back').disabled=state.index===0;save();
 }
 $('start').onclick=()=>{try{begin()}catch(e){$('status').textContent=e.message}};
 $('resetElapsed').onclick=()=>{
@@ -161,8 +175,7 @@ $('download').onclick=()=>{
  const url=URL.createObjectURL(new Blob([JSON.stringify(result,null,2)+'\n'],{type:'application/json'}));
  const a=document.createElement('a');
  a.href=url;
- const slot=String(state.slot).padStart(2,'0');
- a.download=data.preview?`listening-${state.version}-P${slot}.json`:`listening-${state.slot}-${state.sessionId}.json`;
+ a.download=data.preview?`listening-${state.version}-${state.sessionId}.json`:`listening-${state.slot}-${state.sessionId}.json`;
  a.click();
  setTimeout(()=>URL.revokeObjectURL(url),1000);
 };
@@ -177,23 +190,29 @@ if(!data?.cases?.length){
 }
 if(data?.cases?.length){
  $('notice').textContent='';
+ $('invitationField').hidden=data.preview;
+ $('invitationPrivacy').hidden=data.preview;
  $('start').disabled=false;
  $('caseCount').textContent=String(data.cases.length);
  $('versionCount').textContent=String(data.cases[0].systems.length);
  try{
-  const requestedSlot=params.get('slot');
-  let slot=requestedSlot||sessionStorage.getItem(activeSlotKey());
-  if(!slot && data.preview){
-   const slots=Array.from({length:20},(_,i)=>i+1).filter(n=>localStorage.getItem(draftKey(n)));
-   if(slots.length===1)slot=String(slots[0]);
+  let slot=params.get('slot')||sessionStorage.getItem(activeSlotKey());
+  if(data.preview){
+   if(localStorage.getItem(draftKey('anonymous')))slot='anonymous';
+   else if(!slot||!localStorage.getItem(draftKey(Number(slot)))){
+    const drafts=Array.from({length:20},(_,i)=>i+1).filter(n=>localStorage.getItem(draftKey(n)));
+    slot=drafts.length===1?drafts[0]:null;
+   }else slot=Number(slot);
+  }else if(slot){
+   $('slot').value=slot;
+   slot=Number(slot);
   }
-  if(slot)$('slot').value=slot;
-  const saved=slot && localStorage.getItem(draftKey(Number(slot)));
+  const saved=slot&&localStorage.getItem(draftKey(slot));
   if(saved){
    const draft=JSON.parse(saved);
    if(draft.consent===true){
     $('consent').checked=true;
-    begin();
+    begin(slot);
    }
   }
  }catch(e){$('status').textContent=e.message}
