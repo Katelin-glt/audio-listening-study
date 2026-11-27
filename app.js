@@ -2,7 +2,7 @@
 const $=id=>document.getElementById(id), data=window.STUDY_DATA, cfg=window.STUDY_CONFIG;
 const metrics=['instruction','preservation'];
 const metricNames={instruction:'R-MOS ↑ · Instruction relevance',preservation:'F-MOS ↑ · Preservation of unedited content'};
-let state, inputPlayed=false;
+let state, previewDraftSlot, inputPlayed=false;
 const params=new URLSearchParams(location.search), token=params.get('token')||'';
 // Remove invitation token from the address bar without losing it on reload.
 if(token){sessionStorage.setItem('listen-token',token);history.replaceState(null,'',location.pathname+'?slot='+(params.get('slot')||''))}
@@ -20,7 +20,7 @@ function draftKey(slot){return 'listen:'+data.version+':'+slot}
 function activeSlotKey(){return 'listen-active:'+data.version}
 function save(){
  localStorage.setItem(draftKey(data.preview?'anonymous':state.slot),JSON.stringify(state));
- if(!data.preview)sessionStorage.setItem(activeSlotKey(),String(state.slot));
+ sessionStorage.setItem(activeSlotKey(),data.preview?'anonymous':String(state.slot));
 }
 function showFinished(){
  $('trial').hidden=true;$('done').hidden=false;
@@ -132,7 +132,8 @@ function render(){
  for(const c of cases)$('caseColumns').append(renderCase(c));
  $('back').disabled=state.index===0;save();
 }
-$('start').onclick=()=>{try{begin()}catch(e){$('status').textContent=e.message}};
+$('homeLink').onclick=()=>{if(data?.preview)sessionStorage.removeItem(activeSlotKey())};
+$('start').onclick=()=>{try{begin(previewDraftSlot)}catch(e){$('status').textContent=e.message}};
 $('resetElapsed').onclick=()=>{
  if(!data.preview||!state||state.finishedAt)return;
  state.startedAt=new Date().toISOString();
@@ -207,12 +208,18 @@ if(data?.cases?.length){
    $('slot').value=slot;
    slot=Number(slot);
   }
+  const resumeOnReload=performance.getEntriesByType('navigation')[0]?.type==='reload' &&
+    sessionStorage.getItem(activeSlotKey())==='anonymous';
+  if(data.preview&&!resumeOnReload)sessionStorage.removeItem(activeSlotKey());
   const saved=slot&&localStorage.getItem(draftKey(slot));
   if(saved){
    const draft=JSON.parse(saved);
    if(draft.consent===true){
     $('consent').checked=true;
-    begin(slot);
+    if(data.preview&&!resumeOnReload){
+     previewDraftSlot=slot;
+     $('start').textContent=draft.finishedAt?'View saved results →':'Resume listening →';
+    }else begin(slot);
    }
   }
  }catch(e){$('status').textContent=e.message}
